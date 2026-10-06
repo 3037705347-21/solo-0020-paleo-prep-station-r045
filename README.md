@@ -7,10 +7,10 @@
 ## 目录
 
 - `cmd/paleo-prep-station`：HTTP 服务入口和监听参数。
-- `cmd/workflowcheck`：通过真实 HTTP 处理器执行四条业务链路的本地验证命令。
+- `cmd/workflowcheck`：通过真实 HTTP 处理器执行五条业务链路的本地验证命令。
 - `internal/httpapi`：路由、请求解码、状态码映射和 JSON 输出。
 - `internal/station`：跨领域对象的编排、事务边界和业务流程。
-- `internal/domain`：标本、方案、进度和放行记录的状态与不变量。
+- `internal/domain`：标本、方案、进度、放行记录和证据封存的状态与不变量。
 - `internal/repository`：互斥保护的内存仓储和原子提交。
 - `internal/contracts`：稳定错误模型和公共请求结构。
 
@@ -31,7 +31,12 @@ go run ./cmd/paleo-prep-station --addr 127.0.0.1:18133
 - `GET /plans/{id}`
 - `POST /plans/{id}/approval`
 - `POST /plans/{id}/progress`
-- `POST /specimens/{id}/release`
+- `GET /specimens/{id}/release` 与 `POST /specimens/{id}/release`
+- `GET /specimens/{id}/evidence` 与 `POST /specimens/{id}/evidence`
+- `POST /plans/{id}/evidence`
+- `POST /plans/{id}/progress/{seq}/evidence`
+- `GET /evidence/{id}`
+- `POST /evidence/{id}/verification`
 
 ## 本地验证
 
@@ -42,6 +47,7 @@ go run ./cmd/workflowcheck --workflow register-specimen
 go run ./cmd/workflowcheck --workflow approve-prep-plan
 go run ./cmd/workflowcheck --workflow log-preparation
 go run ./cmd/workflowcheck --workflow release-for-study
+go run ./cmd/workflowcheck --workflow register-evidence
 ```
 
 这些检查会启动临时 HTTP 处理器并调用真实公共路由。

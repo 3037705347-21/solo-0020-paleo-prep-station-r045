@@ -58,6 +58,18 @@ func (s *Service) LogProgress(
 			if err := specimen.MarkStabilized(s.now()); err != nil {
 				return err
 			}
+			seal, err := domain.NewEvidenceSeal(
+				s.nextID("seal"),
+				domain.SealPlanCompletion,
+				specimen.ID,
+				plan.ID,
+				m.EvidenceForPlan(planID),
+				s.now(),
+			)
+			if err != nil {
+				return err
+			}
+			m.PutPlanEvidenceSeal(seal)
 		}
 		m.AppendProgress(entry)
 		m.PutPlan(plan)

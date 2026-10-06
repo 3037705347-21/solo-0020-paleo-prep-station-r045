@@ -106,10 +106,18 @@ func (s *Service) GetPlan(ctx context.Context, planID string) (PlanSnapshot, err
 				progress[index].Conditions = latest.Conditions
 			}
 		}
+		evidence := m.EvidenceForPlan(planID)
+		var seal *domain.EvidenceSeal
+		if frozen, sealed := m.PlanEvidenceSeal(planID); sealed {
+			seal = &frozen
+			evidence = append([]domain.EvidenceRecord(nil), frozen.Entries...)
+		}
 		snapshot = PlanSnapshot{
-			Plan:      plan,
-			Revisions: revisions,
-			Progress:  progress,
+			Plan:         plan,
+			Revisions:    revisions,
+			Progress:     progress,
+			Evidence:     evidence,
+			EvidenceSeal: seal,
 		}
 		return nil
 	})

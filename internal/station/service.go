@@ -37,9 +37,11 @@ func (s *Service) nextID(prefix string) string {
 }
 
 type PlanSnapshot struct {
-	Plan      domain.PrepPlan        `json:"plan"`
-	Revisions []domain.PlanRevision  `json:"revisions"`
-	Progress  []domain.ProgressEntry `json:"progress"`
+	Plan         domain.PrepPlan         `json:"plan"`
+	Revisions    []domain.PlanRevision   `json:"revisions"`
+	Progress     []domain.ProgressEntry  `json:"progress"`
+	Evidence     []domain.EvidenceRecord `json:"evidence"`
+	EvidenceSeal *domain.EvidenceSeal    `json:"evidence_seal,omitempty"`
 }
 
 func (s *Service) ListSpecimens(ctx context.Context) ([]domain.Specimen, error) {

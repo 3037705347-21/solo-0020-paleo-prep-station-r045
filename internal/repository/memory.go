@@ -8,11 +8,14 @@ import (
 )
 
 type state struct {
-	specimens map[string]domain.Specimen
-	plans     map[string]domain.PrepPlan
-	revisions map[string][]domain.PlanRevision
-	progress  map[string][]domain.ProgressEntry
-	releases  map[string]domain.ReleaseRecord
+	specimens    map[string]domain.Specimen
+	plans        map[string]domain.PrepPlan
+	revisions    map[string][]domain.PlanRevision
+	progress     map[string][]domain.ProgressEntry
+	releases     map[string]domain.ReleaseRecord
+	evidence     map[string]domain.EvidenceRecord
+	planSeals    map[string]domain.EvidenceSeal
+	releaseSeals map[string]domain.EvidenceSeal
 }
 
 type MemoryRepository struct {
@@ -23,11 +26,14 @@ type MemoryRepository struct {
 func NewMemory() *MemoryRepository {
 	return &MemoryRepository{
 		state: state{
-			specimens: make(map[string]domain.Specimen),
-			plans:     make(map[string]domain.PrepPlan),
-			revisions: make(map[string][]domain.PlanRevision),
-			progress:  make(map[string][]domain.ProgressEntry),
-			releases:  make(map[string]domain.ReleaseRecord),
+			specimens:    make(map[string]domain.Specimen),
+			plans:        make(map[string]domain.PrepPlan),
+			revisions:    make(map[string][]domain.PlanRevision),
+			progress:     make(map[string][]domain.ProgressEntry),
+			releases:     make(map[string]domain.ReleaseRecord),
+			evidence:     make(map[string]domain.EvidenceRecord),
+			planSeals:    make(map[string]domain.EvidenceSeal),
+			releaseSeals: make(map[string]domain.EvidenceSeal),
 		},
 	}
 }
@@ -52,11 +58,14 @@ func (r *MemoryRepository) Mutate(fn func(*Mutation) error) error {
 
 func cloneMutation(source state) *Mutation {
 	copied := state{
-		specimens: make(map[string]domain.Specimen, len(source.specimens)),
-		plans:     make(map[string]domain.PrepPlan, len(source.plans)),
-		revisions: make(map[string][]domain.PlanRevision, len(source.revisions)),
-		progress:  make(map[string][]domain.ProgressEntry, len(source.progress)),
-		releases:  make(map[string]domain.ReleaseRecord, len(source.releases)),
+		specimens:    make(map[string]domain.Specimen, len(source.specimens)),
+		plans:        make(map[string]domain.PrepPlan, len(source.plans)),
+		revisions:    make(map[string][]domain.PlanRevision, len(source.revisions)),
+		progress:     make(map[string][]domain.ProgressEntry, len(source.progress)),
+		releases:     make(map[string]domain.ReleaseRecord, len(source.releases)),
+		evidence:     make(map[string]domain.EvidenceRecord, len(source.evidence)),
+		planSeals:    make(map[string]domain.EvidenceSeal, len(source.planSeals)),
+		releaseSeals: make(map[string]domain.EvidenceSeal, len(source.releaseSeals)),
 	}
 	for key, value := range source.specimens {
 		copied.specimens[key] = value
@@ -72,6 +81,17 @@ func cloneMutation(source state) *Mutation {
 	}
 	for key, value := range source.releases {
 		copied.releases[key] = value
+	}
+	for key, value := range source.evidence {
+		copied.evidence[key] = value
+	}
+	for key, value := range source.planSeals {
+		value.Entries = append([]domain.EvidenceRecord(nil), value.Entries...)
+		copied.planSeals[key] = value
+	}
+	for key, value := range source.releaseSeals {
+		value.Entries = append([]domain.EvidenceRecord(nil), value.Entries...)
+		copied.releaseSeals[key] = value
 	}
 	return &Mutation{state: copied}
 }
@@ -210,4 +230,70 @@ func (m *Mutation) ReleaseForSpecimen(specimenID string) (domain.ReleaseRecord, 
 
 func (m *Mutation) PutRelease(value domain.ReleaseRecord) {
 	m.state.releases[value.ID] = value
+}
+
+func (m *Mutation) GetEvidence(id string) (domain.EvidenceRecord, bool) {
+	value, ok := m.state.evidence[id]
+	return value, ok
+}
+
+func (m *Mutation) PutEvidence(value domain.EvidenceRecord) {
+	m.state.evidence[value.ID] = value
+}
+
+func (m *Mutation) FindEvidenceByDigest(digest string) (domain.EvidenceRecord, bool) {
+	for _, value := range m.state.evidence {
+		if value.Digest == digest {
+			return value, true
+		}
+	}
+	return domain.EvidenceRecord{}, false
+}
+
+func (m *Mutation) EvidenceForSpecimen(specimenID string) []domain.EvidenceRecord {
+	values := make([]domain.EvidenceRecord, 0)
+	for _, value := range m.state.evidence {
+		if value.SpecimenID == specimenID {
+			values = append(values, value)
+		}
+	}
+	return sortEvidence(values)
+}
+
+func (m *Mutation) EvidenceForPlan(planID string) []domain.EvidenceRecord {
+	values := make([]domain.EvidenceRecord, 0)
+	for _, value := range m.state.evidence {
+		if value.PlanID == planID {
+			values = append(values, value)
+		}
+	}
+	return sortEvidence(values)
+}
+
+func sortEvidence(values []domain.EvidenceRecord) []domain.EvidenceRecord {
+	sort.Slice(values, func(i, j int) bool {
+		if values[i].CreatedAt.Equal(values[j].CreatedAt) {
+			return values[i].ID < values[j].ID
+		}
+		return values[i].CreatedAt.Before(values[j].CreatedAt)
+	})
+	return values
+}
+
+func (m *Mutation) PlanEvidenceSeal(planID string) (domain.EvidenceSeal, bool) {
+	value, ok := m.state.planSeals[planID]
+	return value, ok
+}
+
+func (m *Mutation) PutPlanEvidenceSeal(value domain.EvidenceSeal) {
+	m.state.planSeals[value.PlanID] = value
+}
+
+func (m *Mutation) ReleaseEvidenceSeal(specimenID string) (domain.EvidenceSeal, bool) {
+	value, ok := m.state.releaseSeals[specimenID]
+	return value, ok
+}
+
+func (m *Mutation) PutReleaseEvidenceSeal(value domain.EvidenceSeal) {
+	m.state.releaseSeals[value.SpecimenID] = value
 }

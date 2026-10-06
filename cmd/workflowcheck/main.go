@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"time"
 
 	"example.com/paleo-prep-station/internal/contracts"
@@ -30,16 +31,39 @@ type planView struct {
 	Status     string `json:"status"`
 }
 
+type evidenceView struct {
+	ID               string `json:"id"`
+	TargetKind       string `json:"target_kind"`
+	Kind             string `json:"kind"`
+	Digest           string `json:"digest"`
+	ProgressSequence int    `json:"progress_sequence"`
+}
+
+type sealView struct {
+	ID             string         `json:"id"`
+	Scope          string         `json:"scope"`
+	ManifestDigest string         `json:"manifest_digest"`
+	Entries        []evidenceView `json:"entries"`
+}
+
+type verificationView struct {
+	EvidenceID string `json:"evidence_id"`
+	Result     string `json:"result"`
+}
+
 type planSnapshot struct {
 	Plan     planView `json:"plan"`
 	Progress []struct {
 		Percent int `json:"percent"`
 	} `json:"progress"`
+	Evidence     []evidenceView `json:"evidence"`
+	EvidenceSeal *sealView      `json:"evidence_seal"`
 }
 
 type releaseView struct {
-	ID         string `json:"id"`
-	SpecimenID string `json:"specimen_id"`
+	ID           string    `json:"id"`
+	SpecimenID   string    `json:"specimen_id"`
+	EvidenceSeal *sealView `json:"evidence_seal"`
 }
 
 func main() {
@@ -170,6 +194,8 @@ func run(workflow string) error {
 			return fmt.Errorf("expected available specimen, got %s", fetched.Status)
 		}
 		return nil
+	case "register-evidence":
+		return checkEvidenceTrail(client, server.URL)
 	default:
 		return fmt.Errorf("unknown workflow %q", workflow)
 	}
@@ -250,6 +276,245 @@ func recordProgress(client *http.Client, baseURL, planID string, percent int, st
 		http.StatusCreated,
 		&ignored,
 	)
+}
+
+func registerEvidence(
+	client *http.Client,
+	url string,
+	kind string,
+	digest string,
+	wantStatus int,
+	target *evidenceView,
+) error {
+	var decoded any
+	if target != nil {
+		decoded = target
+	}
+	return requestJSON(
+		client,
+		http.MethodPost,
+		url,
+		contracts.RegisterEvidenceRequest{
+			Kind:        kind,
+			Digest:      digest,
+			SubmittedBy: "preparator-chen",
+		},
+		wantStatus,
+		decoded,
+	)
+}
+
+func checkEvidenceTrail(client *http.Client, baseURL string) error {
+	specimen, plan, err := completedPlanSetup(client, baseURL)
+	if err != nil {
+		return err
+	}
+	if err := recordProgress(client, baseURL, plan.ID, 40, "基质剥离"); err != nil {
+		return err
+	}
+
+	digestBefore := strings.Repeat("a", 64)
+	digestBatch := strings.Repeat("b", 64)
+	digestMeasure := strings.Repeat("c", 64)
+
+	var before evidenceView
+	if err := registerEvidence(
+		client,
+		baseURL+"/specimens/"+specimen.ID+"/evidence",
+		"photo_before",
+		digestBefore,
+		http.StatusCreated,
+		&before,
+	); err != nil {
+		return err
+	}
+	if before.TargetKind != "specimen" || before.Digest != digestBefore {
+		return errors.New("specimen evidence does not keep target and digest")
+	}
+	var batch evidenceView
+	if err := registerEvidence(
+		client,
+		baseURL+"/plans/"+plan.ID+"/evidence",
+		"material_batch",
+		digestBatch,
+		http.StatusCreated,
+		&batch,
+	); err != nil {
+		return err
+	}
+	var measure evidenceView
+	if err := registerEvidence(
+		client,
+		baseURL+"/plans/"+plan.ID+"/progress/1/evidence",
+		"measurement",
+		digestMeasure,
+		http.StatusCreated,
+		&measure,
+	); err != nil {
+		return err
+	}
+	if measure.TargetKind != "progress" || measure.ProgressSequence != 1 {
+		return errors.New("progress evidence is not linked to sequence 1")
+	}
+
+	// Duplicate digest, unknown objects and wrong associations are deterministic.
+	if err := registerEvidence(
+		client,
+		baseURL+"/specimens/"+specimen.ID+"/evidence",
+		"photo_after",
+		digestBefore,
+		http.StatusConflict,
+		nil,
+	); err != nil {
+		return err
+	}
+	if err := registerEvidence(
+		client,
+		baseURL+"/plans/plan-missing/evidence",
+		"measurement",
+		strings.Repeat("d", 64),
+		http.StatusNotFound,
+		nil,
+	); err != nil {
+		return err
+	}
+	if err := registerEvidence(
+		client,
+		baseURL+"/plans/"+plan.ID+"/progress/9/evidence",
+		"measurement",
+		strings.Repeat("d", 64),
+		http.StatusNotFound,
+		nil,
+	); err != nil {
+		return err
+	}
+	if err := registerEvidence(
+		client,
+		baseURL+"/plans/"+plan.ID+"/evidence",
+		"xray_scan",
+		strings.Repeat("d", 64),
+		http.StatusBadRequest,
+		nil,
+	); err != nil {
+		return err
+	}
+
+	// Completing the plan freezes plan-level and progress-level evidence.
+	if err := recordProgress(client, baseURL, plan.ID, 100, "表面加固"); err != nil {
+		return err
+	}
+	var snapshot planSnapshot
+	if err := requestJSON(client, http.MethodGet, baseURL+"/plans/"+plan.ID, nil, http.StatusOK, &snapshot); err != nil {
+		return err
+	}
+	if snapshot.EvidenceSeal == nil || snapshot.EvidenceSeal.Scope != "plan_completion" {
+		return errors.New("completed plan has no plan_completion evidence seal")
+	}
+	if len(snapshot.EvidenceSeal.Entries) != 2 || len(snapshot.Evidence) != 2 {
+		return errors.New("plan seal must freeze exactly the plan and progress evidence")
+	}
+	if snapshot.EvidenceSeal.ManifestDigest == "" {
+		return errors.New("plan seal is missing a manifest digest")
+	}
+	if err := registerEvidence(
+		client,
+		baseURL+"/plans/"+plan.ID+"/evidence",
+		"photo_after",
+		strings.Repeat("e", 64),
+		http.StatusConflict,
+		nil,
+	); err != nil {
+		return err
+	}
+	if err := registerEvidence(
+		client,
+		baseURL+"/plans/"+plan.ID+"/progress/1/evidence",
+		"photo_after",
+		strings.Repeat("e", 64),
+		http.StatusConflict,
+		nil,
+	); err != nil {
+		return err
+	}
+
+	// Digest verification detects replaced files.
+	var match verificationView
+	if err := requestJSON(
+		client,
+		http.MethodPost,
+		baseURL+"/evidence/"+before.ID+"/verification",
+		contracts.VerifyEvidenceRequest{Digest: digestBefore},
+		http.StatusOK,
+		&match,
+	); err != nil {
+		return err
+	}
+	if match.Result != "match" {
+		return fmt.Errorf("expected matching digest, got %s", match.Result)
+	}
+	var mismatch verificationView
+	if err := requestJSON(
+		client,
+		http.MethodPost,
+		baseURL+"/evidence/"+before.ID+"/verification",
+		contracts.VerifyEvidenceRequest{Digest: strings.Repeat("f", 64)},
+		http.StatusOK,
+		&mismatch,
+	); err != nil {
+		return err
+	}
+	if mismatch.Result != "mismatch" {
+		return fmt.Errorf("expected mismatched digest, got %s", mismatch.Result)
+	}
+
+	// Release freezes every evidence relation of the specimen.
+	var release releaseView
+	if err := requestJSON(
+		client,
+		http.MethodPost,
+		baseURL+"/specimens/"+specimen.ID+"/release",
+		contracts.ReleaseRequest{
+			Purpose:    "比较解剖研究",
+			Recipient:  "地层研究组",
+			ApprovedBy: "keeper-zhou",
+		},
+		http.StatusCreated,
+		&release,
+	); err != nil {
+		return err
+	}
+	if release.EvidenceSeal == nil || release.EvidenceSeal.Scope != "release" {
+		return errors.New("release record has no release evidence seal")
+	}
+	if len(release.EvidenceSeal.Entries) != 3 {
+		return errors.New("release seal must freeze specimen, plan and progress evidence")
+	}
+	var fetchedRelease releaseView
+	if err := requestJSON(
+		client,
+		http.MethodGet,
+		baseURL+"/specimens/"+specimen.ID+"/release",
+		nil,
+		http.StatusOK,
+		&fetchedRelease,
+	); err != nil {
+		return err
+	}
+	if fetchedRelease.EvidenceSeal == nil ||
+		fetchedRelease.EvidenceSeal.ManifestDigest != release.EvidenceSeal.ManifestDigest {
+		return errors.New("release evidence relations are not fixed after the fact")
+	}
+	if err := registerEvidence(
+		client,
+		baseURL+"/specimens/"+specimen.ID+"/evidence",
+		"photo_after",
+		strings.Repeat("0", 64),
+		http.StatusConflict,
+		nil,
+	); err != nil {
+		return err
+	}
+	return nil
 }
 
 func requestJSON(
