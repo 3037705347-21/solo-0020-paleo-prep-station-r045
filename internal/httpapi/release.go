@@ -18,3 +18,12 @@ func (api *API) releaseSpecimen(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusCreated, value)
 }
+
+func (api *API) getRelease(w http.ResponseWriter, r *http.Request) {
+	value, err := api.service.GetRelease(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, value)
+}

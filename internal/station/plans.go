@@ -106,10 +106,16 @@ func (s *Service) GetPlan(ctx context.Context, planID string) (PlanSnapshot, err
 				progress[index].Conditions = latest.Conditions
 			}
 		}
+		evidence := m.EvidenceForPlanCompletion(planID)
 		snapshot = PlanSnapshot{
 			Plan:      plan,
 			Revisions: revisions,
 			Progress:  progress,
+			Evidence:  evidence,
+		}
+		if fixation, ok := m.FixationForPlan(planID); ok {
+			fixed := fixation
+			snapshot.EvidenceFixation = &fixed
 		}
 		return nil
 	})

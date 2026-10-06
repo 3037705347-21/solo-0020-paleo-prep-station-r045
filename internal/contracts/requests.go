@@ -41,3 +41,14 @@ type ReleaseRequest struct {
 	Recipient  string `json:"recipient"`
 	ApprovedBy string `json:"approved_by"`
 }
+
+type RegisterEvidenceRequest struct {
+	TargetKind       string `json:"target_kind"`
+	SpecimenID       string `json:"specimen_id"`
+	PlanID           string `json:"plan_id"`
+	ProgressSequence int    `json:"progress_sequence"`
+	Kind             string `json:"kind"`
+	Summary          string `json:"summary"`
+	ContentDigest    string `json:"content_digest"`
+	SubmittedBy      string `json:"submitted_by"`
+}

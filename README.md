@@ -32,6 +32,15 @@ go run ./cmd/paleo-prep-station --addr 127.0.0.1:18133
 - `POST /plans/{id}/approval`
 - `POST /plans/{id}/progress`
 - `POST /specimens/{id}/release`
+- `GET /specimens/{id}/release`
+- `POST /evidence`、`GET /evidence/{id}`
+- `GET /specimens/{id}/evidence` 与 `GET /plans/{id}/evidence`
+
+## 证据登记与固定
+
+证据可以关联到标本、修复方案或某个进度序号，提交时需要给出受控类型（照片、测量记录、材料批次凭证等）、内容摘要、内容 SHA-256 校验值和提交人。系统在事务内校验关联对象真实存在、方案归属标本、进度序号已产生；同一关联坐标上重复的内容校验或摘要会被拒绝，并发提交只有一条成功。
+
+证据只追加，不能修改或删除。方案完成时固定方案级和全部进度序号上的证据；办理放行时固定标本级、标本全部方案及全部进度序号上的证据。固定清单复制当时的证据并生成规范化摘要，之后新增证据不会改变历史固定结果。
 
 ## 本地验证
 
@@ -42,6 +51,7 @@ go run ./cmd/workflowcheck --workflow register-specimen
 go run ./cmd/workflowcheck --workflow approve-prep-plan
 go run ./cmd/workflowcheck --workflow log-preparation
 go run ./cmd/workflowcheck --workflow release-for-study
+go run ./cmd/workflowcheck --workflow register-evidence
 ```
 
 这些检查会启动临时 HTTP 处理器并调用真实公共路由。

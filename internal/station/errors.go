@@ -9,3 +9,11 @@ func notFoundSpecimen(id string) error {
 func notFoundPlan(id string) error {
 	return contracts.NotFound("plan_not_found", "未找到修复方案 "+id)
 }
+
+func notFoundEvidence(id string) error {
+	return contracts.NotFound("evidence_not_found", "未找到证据登记 "+id)
+}
+
+func notFoundRelease(specimenID string) error {
+	return contracts.NotFound("release_not_found", "标本 "+specimenID+" 尚未办理放行")
+}

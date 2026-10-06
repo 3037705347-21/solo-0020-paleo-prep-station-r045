@@ -37,9 +37,17 @@ func (s *Service) nextID(prefix string) string {
 }
 
 type PlanSnapshot struct {
-	Plan      domain.PrepPlan        `json:"plan"`
-	Revisions []domain.PlanRevision  `json:"revisions"`
-	Progress  []domain.ProgressEntry `json:"progress"`
+	Plan             domain.PrepPlan          `json:"plan"`
+	Revisions        []domain.PlanRevision    `json:"revisions"`
+	Progress         []domain.ProgressEntry   `json:"progress"`
+	Evidence         []domain.EvidenceRecord  `json:"evidence"`
+	EvidenceFixation *domain.EvidenceFixation `json:"evidence_fixation,omitempty"`
+}
+
+// ReleaseOutcome 是放行记录与当时固定的证据关系的组合读取结果。
+type ReleaseOutcome struct {
+	Release          domain.ReleaseRecord     `json:"release"`
+	EvidenceFixation *domain.EvidenceFixation `json:"evidence_fixation,omitempty"`
 }
 
 func (s *Service) ListSpecimens(ctx context.Context) ([]domain.Specimen, error) {

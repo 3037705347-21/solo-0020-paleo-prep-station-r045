@@ -58,6 +58,23 @@ func (s *Service) LogProgress(
 			if err := specimen.MarkStabilized(s.now()); err != nil {
 				return err
 			}
+			// 方案完成的同一事务内固定当时的证据关系，
+			// 之后追加或替换证据都不会改变这份历史清单。
+			if _, exists := m.FixationForPlan(plan.ID); !exists {
+				fixation, err := domain.NewEvidenceFixation(
+					s.nextID("fixation"),
+					domain.FixationPlanCompletion,
+					specimen.ID,
+					plan.ID,
+					"",
+					m.EvidenceForPlanCompletion(plan.ID),
+					s.now(),
+				)
+				if err != nil {
+					return err
+				}
+				m.PutFixation(fixation)
+			}
 		}
 		m.AppendProgress(entry)
 		m.PutPlan(plan)
